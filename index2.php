@@ -2,9 +2,9 @@
 
 // Connessione al database
 $servername = "localhost";
-$username = "program";
-$password = "777";
-$dbname = "esempio_webservice";
+$username = "admin";
+$password = "123";
+$dbname = "wsesempio";
 
 $conn = new mysqli($servername, $username, $password, $dbname);
 
@@ -13,17 +13,39 @@ if ($conn->connect_error) {
     die("Connessione fallita: " . $conn->connect_error);
 }
 
-//echo $_SERVER['REQUEST_URI'];
+/*/ Validazione della richiesta NON FUNZIONANTE
+if ($_SERVER['CONTENT_TYPE'] !== 'application/json') {
+    http_response_code(400); // Bad Request
+    echo "Richiesta deve essere di tipo JSON.";
+    exit();
+}/*/
 
-$array = explode('/',$_SERVER['REQUEST_URI']);
+// Validazione dei dati in input
+function validateData($data) {
+    if (
+        !isset($data['nome']) || !is_string($data['nome']) ||
+        !isset($data['cognome']) || !is_string($data['cognome']) ||
+        !isset($data['email']) || !filter_var($data['email'], FILTER_VALIDATE_EMAIL) ||
+        !isset($data['eta']) || !is_numeric($data['eta']) ||
+        !isset($data['data_iscrizione']) || !strtotime($data['data_iscrizione'])
+    ) {
+        return false;
+    }
+    return true;
+}
+
+$array = explode('/', $_SERVER['REQUEST_URI']);
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method == 'GET') {
     if (count($array) == 3 && $array[2] != '') {
         // Se è specificato un ID nella richiesta GET
         $id = $array[2];
-        $sql = "SELECT * FROM dati WHERE id = $id";
-        $result = $conn->query($sql);
+        $sql = "SELECT * FROM dati WHERE id = ?";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param("i", $id);
+        $stmt->execute();
+        $result = $stmt->get_result();
         
         if ($result->num_rows > 0) {
             $row = $result->fetch_assoc();
@@ -55,11 +77,11 @@ if ($method == 'GET') {
     $data = json_decode(file_get_contents("php://input"), true);
 
     // Verifica se i dati sono stati inviati correttamente
-    if (!empty($data)) {
+    if (!empty($data) && validateData($data)) {
         // Esegui l'inserimento nel database
-        $sql = "INSERT INTO dati (campo1, campo2, campo3) VALUES (?, ?, ?)";
+        $sql = "INSERT INTO dati (nome, cognome, email, eta, data_iscrizione) VALUES (?, ?, ?, ?, ?)";
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sss", $data['campo1'], $data['campo2'], $data['campo3']);
+        $stmt->bind_param("sssis", $data['nome'], $data['cognome'], $data['email'], $data['eta'], $data['data_iscrizione']);
 
         if ($stmt->execute()) {
             echo "Dati inseriti con successo.";
@@ -78,14 +100,18 @@ if ($method == 'GET') {
         $id = $array[2];
         
         // Esegui l'aggiornamento nel database
-        $sql = "UPDATE dati SET campo1=?, campo2=?, campo3=? WHERE id=?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sssi", $data['campo1'], $data['campo2'], $data['campo3'], $id);
+        if (!empty($data) && validateData($data)) {
+            $sql = "UPDATE dati SET nome=?, cognome=?, email=?, eta=?, data_iscrizione=? WHERE id=?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("sssssi", $data['nome'], $data['cognome'], $data['email'], $data['eta'], $data['data_iscrizione'], $id);
 
-        if ($stmt->execute()) {
-            echo "Dati aggiornati con successo.";
+            if ($stmt->execute()) {
+                echo "Dati aggiornati con successo.";
+            } else {
+                echo "Errore durante l'aggiornamento dei dati.";
+            }
         } else {
-            echo "Errore durante l'aggiornamento dei dati.";
+            echo "Dati non validi.";
         }
     } else {
         echo "ID non specificato.";
